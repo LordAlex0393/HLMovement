@@ -18,13 +18,8 @@ public class PlayerStateManager {
     private final Map<UUID, Location> lastLocations = new ConcurrentHashMap<>();
     private BukkitTask task;
 
-    // --- НАСТРОЙКИ ---
-    // Прибавка скорости за каждый тик, когда ты крутишь мышкой.
-    // УВЕЛИЧЕНО В 4 РАЗА (было 0.05, стало 0.2).
-    // Если будет слишком быстро — уменьши до 0.1. Если медленно — увеличь до 0.4.
-    private final double ACCEL_PER_TICK = 0.2;
-
-    // Абсолютный потолок (чтобы сервер не взорвался). 10.0 = 200 блоков/сек.
+    // Прибавка скорости
+    private final double ACCEL_PER_TICK = 0.15;
     private final double MAX_CAP = 10.0;
 
     public PlayerStateManager(HLMovement plugin, MovementConfig config) {
@@ -59,7 +54,7 @@ public class PlayerStateManager {
             Location currentLoc = p.getLocation();
             Location lastLoc = lastLocations.get(p.getUniqueId());
 
-            // Скорость для сайдбара (сглаживание)
+            // Скорость для сайдбара
             if (lastLoc != null) {
                 double dx = currentLoc.getX() - lastLoc.getX();
                 double dz = currentLoc.getZ() - lastLoc.getZ();
@@ -72,14 +67,11 @@ public class PlayerStateManager {
 
             s.onGround = p.isOnGround();
 
-            // --- ФИЗИКА ---
             if (!s.onGround) {
-                // В ВОЗДУХЕ: смотрим, крутит ли игрок мышкой
                 float yawDelta = s.yaw - s.lastYaw;
                 if (yawDelta > 180) yawDelta -= 360;
                 if (yawDelta < -180) yawDelta += 360;
 
-                // Если игрок крутит мышку (даже чуть-чуть, порог 0.05 градуса)
                 if (Math.abs(yawDelta) > 0.05f) {
                     Vector currentVel = p.getVelocity();
                     double velX = currentVel.getX();
@@ -88,31 +80,33 @@ public class PlayerStateManager {
 
                     double currentSpeed = Math.sqrt(velX * velX + velZ * velZ);
 
-                    // Если мы уже двигаемся (чтобы не разгоняться с нуля в воздухе)
                     if (currentSpeed > 0.05) {
                         // Направление, куда мы летим прямо сейчас
                         Vector currentDir = new Vector(velX / currentSpeed, 0, velZ / currentSpeed);
 
-                        // Вектор взгляда (куда смотрит мышь)
+                        // Направление взгляда
                         Vector lookDir = p.getLocation().getDirection().setY(0).normalize();
 
-                        // Вектор стрейфа (вправо от взгляда)
+                        // Боковой вектор
                         Vector strafeDir = new Vector(-lookDir.getZ(), 0, lookDir.getX());
 
-                        // Определяем, в какую сторону крутится мышь
                         double turn = Math.signum(yawDelta);
 
-                        // Если крутим вправо — стрейф вправо, если влево — влево
-                        double strafeX = strafeDir.getX() * turn;
-                        double strafeZ = strafeDir.getZ() * turn;
+                        // --- НОВЫЙ ВЕКТОР: 70% ВПЕРЁД + 30% ВБОК ---
+                        // Мы берем направление взгляда (вперед) и добавляем немного вбок
+                        double pushX = (lookDir.getX() * 0.7) + (strafeDir.getX() * turn * 0.3);
+                        double pushZ = (lookDir.getZ() * 0.7) + (strafeDir.getZ() * turn * 0.3);
 
-                        // --- ГЛАВНОЕ: ПРИБАВКА СКОРОСТИ ---
-                        // Мы добавляем фиксированную прибавку (ACCEL_PER_TICK) каждый тик,
-                        // когда крутим мышкой. Это плавно накапливает скорость.
-                        double newX = velX + (strafeX * ACCEL_PER_TICK) + (currentDir.getX() * ACCEL_PER_TICK * 0.5);
-                        double newZ = velZ + (strafeZ * ACCEL_PER_TICK) + (currentDir.getZ() * ACCEL_PER_TICK * 0.5);
+                        // Нормализуем, чтобы длина была 1
+                        double pushLen = Math.sqrt(pushX * pushX + pushZ * pushZ);
+                        pushX /= pushLen;
+                        pushZ /= pushLen;
 
-                        // Потолок (чтобы не было переполнения)
+                        // Добавляем скорость
+                        double newX = velX + (pushX * ACCEL_PER_TICK);
+                        double newZ = velZ + (pushZ * ACCEL_PER_TICK);
+
+                        // Потолок
                         double newSpeed = Math.sqrt(newX * newX + newZ * newZ);
                         if (newSpeed > MAX_CAP) {
                             newX = (newX / newSpeed) * MAX_CAP;
