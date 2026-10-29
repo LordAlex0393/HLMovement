@@ -18,6 +18,11 @@ public class PlayerStateManager {
     private final Map<UUID, Location> lastLocations = new ConcurrentHashMap<>();
     private BukkitTask task;
 
+    // ОГРОМНЫЙ РАЗГОН ДЛЯ ТЕСТА
+    private final double HL_MAXSPEED = 0.28;
+    private final double HL_AIRACCEL = 2000.0; // ОГРОМНАЯ СИЛА
+    private final double HL_WISHSPEED_CAP = 0.30;
+
     public PlayerStateManager(HLMovement plugin, MovementConfig config) {
         this.plugin = plugin;
         this.config = config;
@@ -50,77 +55,79 @@ public class PlayerStateManager {
             Location currentLoc = p.getLocation();
             Location lastLoc = lastLocations.get(p.getUniqueId());
 
-            // Обновляем скорость для сайдбара (со сглаживанием)
             if (lastLoc != null) {
+                // 1. Берем ФАКТИЧЕСКИЙ вектор движения (куда игрок сместился в ванили)
                 double dx = currentLoc.getX() - lastLoc.getX();
                 double dz = currentLoc.getZ() - lastLoc.getZ();
-                if (Math.abs(dx) < 2.0 && Math.abs(dz) < 2.0) {
-                    // Сглаживание: берем 80% старой и 20% новой скорости, чтобы избежать скачков
-                    s.vx = s.vx * 0.8 + dx * 0.2;
-                    s.vz = s.vz * 0.8 + dz * 0.2;
+                double dist = Math.sqrt(dx*dx + dz*dz);
+
+                // 2. Если сдвиг был (нажимал WASD)
+                if (dist > 0.01) {
+                    double yawRad = Math.toRadians(currentLoc.getYaw());
+                    double sin = Math.sin(yawRad);
+                    double cos = Math.cos(yawRad);
+
+                    // Преобразуем мировые координаты в локальные (относительно взгляда)
+                    // Если dx,dz совпадают с направлением взгляда - это forward
+                    // Если перпендикулярно - это strafe
+                    double localForward = -sin * dx - cos * dz;
+                    double localStrafe = cos * dx - sin * dz;
+
+                    // Нормализуем (чтобы не зависеть от скорости)
+                    s.forward = (float) (localForward / dist);
+                    s.strafe = (float) (localStrafe / dist);
+
+                    // ДЕБАГ! Без русских букв, только цифры.
+                    if (dist > 0.05) {
+                        System.out.println("[HL-DEBUG] forward=" + String.format("%.2f", s.forward)
+                                + " strafe=" + String.format("%.2f", s.strafe));
+                    }
+                } else {
+                    s.forward = 0;
+                    s.strafe = 0;
                 }
             }
             lastLocations.put(p.getUniqueId(), currentLoc.clone());
-
             s.onGround = p.isOnGround();
 
-            // --- ФИЗИКА БАННИХОПА (На основе взгляда) ---
-            if (s.onGround && s.jumpPressed) {
-                // Ванильный прыжок. Сохраняем текущую скорость.
-                Vector currentVel = p.getVelocity();
-                p.setVelocity(new Vector(currentVel.getX(), 0.42, currentVel.getZ()));
-                s.justJumped = true;
-            } else if (!s.onGround) {
-                // В ВОЗДУХЕ:
-                float yawDelta = s.yaw - s.lastYaw;
-                if (yawDelta > 180) yawDelta -= 360;
-                if (yawDelta < -180) yawDelta += 360;
+            // Считаем wishdir
+            double len = Math.sqrt(s.forward * s.forward + s.strafe * s.strafe);
+            if (len > 0.001) {
+                double yawRad = Math.toRadians(currentLoc.getYaw());
+                double sin = Math.sin(yawRad);
+                double cos = Math.cos(yawRad);
+                s.wishX = (-sin * (s.forward/len) + cos * (s.strafe/len));
+                s.wishZ = (-cos * (s.forward/len) - sin * (s.strafe/len));
+            } else {
+                s.wishX = 0;
+                s.wishZ = 0;
+            }
 
-                // Если игрок повернул голову больше чем на 0.5 градуса за тик
-                if (Math.abs(yawDelta) > 0.5f) {
-                    Vector currentVel = p.getVelocity();
-                    Vector lookDir = p.getLocation().getDirection().setY(0).normalize();
+            Vector velocity = p.getVelocity();
+            double velX = velocity.getX();
+            double velZ = velocity.getZ();
+            double velY = velocity.getY();
 
-                    // 1. Считаем текущую скорость (только горизонтальную)
-                    double currentSpeedX = currentVel.getX();
-                    double currentSpeedZ = currentVel.getZ();
-                    double currentSpeed = Math.sqrt(currentSpeedX * currentSpeedX + currentSpeedZ * currentSpeedZ);
+            // --- ФИЗИКА (ТОЛЬКО В ВОЗДУХЕ) ---
+            if (!s.onGround) {
+                double currentSpeed = velX * s.wishX + velZ * s.wishZ;
+                double addSpeed = HL_WISHSPEED_CAP - currentSpeed;
 
-                    // Если мы почти стоим, не ускоряем (чтобы нельзя было разогнаться с места в воздухе)
-                    if (currentSpeed > 0.1) {
-                        // Направление, куда мы летим прямо сейчас
-                        Vector currentDir = new Vector(currentSpeedX / currentSpeed, 0, currentSpeedZ / currentSpeed);
+                // Если есть желание двигаться (жмёт WASD) и не превысили лимит
+                if (addSpeed > 0 && (Math.abs(s.wishX) > 0.01 || Math.abs(s.wishZ) > 0.01)) {
+                    double accelSpeed = HL_AIRACCEL * HL_WISHSPEED_CAP * 0.05;
+                    if (accelSpeed > addSpeed) accelSpeed = addSpeed;
 
-                        // 2. Вычисляем "прямое" ускорение (вдоль текущего полета)
-                        // Чем сильнее крутим мышку, тем больше ускорение вперед
-                        double forwardAccel = Math.abs(yawDelta) * 0.015;
-                        if (forwardAccel > 0.3) forwardAccel = 0.3;
-
-                        // 3. Вычисляем "боковое" ускорение (чтобы плавно доворачивало)
-                        // Оно очень маленькое, чтобы не сносило в бок
-                        Vector strafeDir = new Vector(-lookDir.getZ(), 0, lookDir.getX()).multiply(Math.signum(yawDelta));
-                        double strafeAccel = Math.abs(yawDelta) * 0.002;
-                        if (strafeAccel > 0.05) strafeAccel = 0.05;
-
-                        // 4. Собираем новую скорость
-                        double newX = currentSpeedX + (currentDir.getX() * forwardAccel) + (strafeDir.getX() * strafeAccel);
-                        double newZ = currentSpeedZ + (currentDir.getZ() * forwardAccel) + (strafeDir.getZ() * strafeAccel);
-
-                        // Ограничиваем максимальную скорость
-                        double speed = Math.sqrt(newX * newX + newZ * newZ);
-                        if (speed > 4.0) {
-                            newX = (newX / speed) * 4.0;
-                            newZ = (newZ / speed) * 4.0;
-                        }
-
-                        p.setVelocity(new Vector(newX, currentVel.getY(), newZ));
-                    }
+                    velX += s.wishX * accelSpeed;
+                    velZ += s.wishZ * accelSpeed;
+                } else {
+                    // Если не жмёт WASD, гасим скорость, чтобы не было "льда"
+                    velX *= 0.99;
+                    velZ *= 0.99;
                 }
             }
 
-            s.lastYaw = s.yaw;
-            s.wasJumpPressed = s.jumpPressed;
-            s.justJumped = false;
+            p.setVelocity(new Vector(velX, velY, velZ));
         }
     }
 }
