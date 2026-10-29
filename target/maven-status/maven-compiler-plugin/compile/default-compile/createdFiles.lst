@@ -1,0 +1,8 @@
+org\lordalex\hlmovement\ui\SpeedScoreboard.class
+org\lordalex\hlmovement\HLMovement.class
+org\lordalex\hlmovement\listener\SteerVehicleListener.class
+org\lordalex\hlmovement\MovementConfig.class
+org\lordalex\hlmovement\physics\HLPhysics.class
+org\lordalex\hlmovement\PlayerMoveState.class
+org\lordalex\hlmovement\PlayerStateManager.class
+org\lordalex\hlmovement\listener\PlayerMoveListener.class

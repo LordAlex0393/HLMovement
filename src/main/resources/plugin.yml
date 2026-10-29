@@ -1,0 +1,17 @@
+name: HLMovement
+version: '${project.version}'
+main: org.lordalex.hlmovement.HLMovement
+author: Lord_Alex
+api-version: 1.8
+depend: [ProtocolLib]
+commands:
+  hlspeed:
+    description: Вкл/выкл sidebar со скоростью
+    usage: /hlspeed
+  hlreload:
+    description: Перезагрузить конфиг
+    usage: /hlreload
+    permission: hlmovement.reload
+permissions:
+  hlmovement.reload:
+    default: op

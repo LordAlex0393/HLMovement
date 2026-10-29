@@ -1,0 +1,16 @@
+# Все скорости в блоках/тик (BPT). 0.28 = ванильный спринт.
+maxspeed: 0.56          # ~11.2 бл/с — x2 спринта
+accelerate: 5.0         # наземное ускорение
+airaccelerate: 10.0     # воздушное (главная магия bhop)
+friction: 4.0
+stopspeed: 0.28
+# Воздушный "кламп" проекции скорости — из Source, 30 unit/s ≈ 0.28 BPT при нашем масштабе
+air_wishspeed_cap: 0.28
+# Автопрыжок (HL1): true — держишь пробел, прыгает сам. false — ручной тайминг (HL2)
+auto_bhop: true
+# Показывать sidebar со скоростью автоматически
+scoreboard_default: true
+# Обновление sidebar в тиках (2 = 10 Гц)
+scoreboard_interval: 2
+# Включить/выключить физику глобально
+enabled: true
