@@ -29,7 +29,7 @@ public class HLMovement extends JavaPlugin {
 
         // Регистрируем ProtocolLib-слушатель
         ProtocolManager pm = ProtocolLibrary.getProtocolManager();
-        pm.addPacketListener(new SteerVehicleListener(this));
+        pm.addPacketListener(new SteerVehicleListener(this, stateManager));
 
         // Отмена ванильного горизонтального движения + чтение yaw
         Bukkit.getPluginManager().registerEvents(new PlayerMoveListener(stateManager), this);
