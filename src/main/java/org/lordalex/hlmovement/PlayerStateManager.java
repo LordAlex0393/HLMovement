@@ -94,8 +94,8 @@ public class PlayerStateManager {
 
                         // --- НОВЫЙ ВЕКТОР: 70% ВПЕРЁД + 30% ВБОК ---
                         // Мы берем направление взгляда (вперед) и добавляем немного вбок
-                        double pushX = (lookDir.getX() * 0.7) + (strafeDir.getX() * turn * 0.3);
-                        double pushZ = (lookDir.getZ() * 0.7) + (strafeDir.getZ() * turn * 0.3);
+                        double pushX = (lookDir.getX() * 0.67) + (strafeDir.getX() * turn * 0.33);
+                        double pushZ = (lookDir.getZ() * 0.67) + (strafeDir.getZ() * turn * 0.33);
 
                         // Нормализуем, чтобы длина была 1
                         double pushLen = Math.sqrt(pushX * pushX + pushZ * pushZ);

@@ -47,6 +47,16 @@ public class HLMovement extends JavaPlugin {
 
         getLogger().info("HLMovement enabled. Physics constants: maxspeed=" + config.maxspeed
                 + " airaccel=" + config.airaccelerate + " autoBhop=" + config.autoBhop);
+
+        // Включаем сайдбар всем, кто зайдет на сервер
+        Bukkit.getPluginManager().registerEvents(new org.bukkit.event.Listener() {
+            @org.bukkit.event.EventHandler
+            public void onJoin(org.bukkit.event.player.PlayerJoinEvent event) {
+                if (config.scoreboardDefault) {
+                    scoreboard.enable(event.getPlayer());
+                }
+            }
+        }, this);
     }
 
     @Override
