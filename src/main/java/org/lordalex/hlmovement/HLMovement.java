@@ -3,16 +3,21 @@ package org.lordalex.hlmovement;
 import com.comphenix.protocol.ProtocolLibrary;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.Material;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.lordalex.hlmovement.listener.BuilderTool;
 import org.lordalex.hlmovement.listener.PlayerMoveListener;
 import org.lordalex.hlmovement.listener.SteerVehicleListener;
 import org.lordalex.hlmovement.ui.SpeedScoreboard;
+import org.lordalex.hlmovement.utils.ColorUtil;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -38,6 +43,7 @@ public class HLMovement extends JavaPlugin implements Listener {
         ProtocolLibrary.getProtocolManager().addPacketListener(new SteerVehicleListener(this, stateManager));
         Bukkit.getPluginManager().registerEvents(new PlayerMoveListener(stateManager), this);
         Bukkit.getPluginManager().registerEvents(this, this);
+        Bukkit.getPluginManager().registerEvents(new BuilderTool(), this);
 
         stateManager.start();
         scoreboard.start();
@@ -96,6 +102,17 @@ public class HLMovement extends JavaPlugin implements Listener {
 
             if (args[0].equalsIgnoreCase("scoreboard") || args[0].equalsIgnoreCase("sb")) {
                 scoreboard.toggle(p);
+                return true;
+            }
+            if (args[0].equalsIgnoreCase("builder")) {
+                ItemStack ingot = new ItemStack(Material.IRON_INGOT);
+                ItemMeta meta = ingot.getItemMeta();
+                if (meta != null) {
+                    meta.setDisplayName(ColorUtil.get("&e&lГенератор платформ"));
+                    ingot.setItemMeta(meta);
+                }
+                p.getInventory().addItem(ingot);
+                p.sendMessage(ColorUtil.get("&aВыдан генератор платформ (ПКМ — создать)"));
                 return true;
             }
 
