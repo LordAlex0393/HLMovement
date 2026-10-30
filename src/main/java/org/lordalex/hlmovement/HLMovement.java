@@ -21,7 +21,7 @@ import java.util.UUID;
 public class HLMovement extends JavaPlugin implements Listener {
 
     private static HLMovement instance;
-    private MovementConfig config;
+    private ConfigManager configManager;
     private PlayerStateManager stateManager;
     private SpeedScoreboard scoreboard;
     private final Set<UUID> disabledMovement = new HashSet<>();
@@ -29,10 +29,11 @@ public class HLMovement extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
         instance = this;
-        saveDefaultConfig();
-        this.config = new MovementConfig(getConfig());
-        this.stateManager = new PlayerStateManager(this, config);
-        this.scoreboard = new SpeedScoreboard(this, stateManager, config);
+        this.configManager = new ConfigManager(this);
+        Settings settings = configManager.getSettings();
+
+        this.stateManager = new PlayerStateManager(this, settings);
+        this.scoreboard = new SpeedScoreboard(this, stateManager, settings);
 
         ProtocolLibrary.getProtocolManager().addPacketListener(new SteerVehicleListener(this, stateManager));
         Bukkit.getPluginManager().registerEvents(new PlayerMoveListener(stateManager), this);
@@ -40,20 +41,20 @@ public class HLMovement extends JavaPlugin implements Listener {
 
         stateManager.start();
         scoreboard.start();
+        getLogger().info("HLMovement enabled.");
     }
 
     @Override
     public void onDisable() {
         if (stateManager != null) stateManager.stop();
         if (scoreboard != null) scoreboard.stop();
-        instance = null;
     }
 
     public static HLMovement get() { return instance; }
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
-        if (config.scoreboardDefault) {
+        if (configManager.getSettings().isScoreboardDefault()) {
             scoreboard.enable(event.getPlayer());
         }
     }
@@ -64,23 +65,19 @@ public class HLMovement extends JavaPlugin implements Listener {
 
     @Override
     public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
-        if (!(sender instanceof Player)) {
-            sender.sendMessage("§cТолько для игроков.");
-            return true;
-        }
+        if (!(sender instanceof Player)) return true;
         Player p = (Player) sender;
 
         if (cmd.getName().equalsIgnoreCase("hl")) {
             if (args.length == 0) {
-                // Красивое меню
                 p.sendMessage(ChatColor.DARK_GRAY + "" + ChatColor.STRIKETHROUGH + "----------------------------------");
                 p.sendMessage(ChatColor.GOLD + "" + ChatColor.BOLD + "       HL MOVEMENT");
-                p.sendMessage(ChatColor.GRAY + " Ваш статус мувмента: " + (isMovementEnabled(p) ? "§aВКЛ" : "§cВЫКЛ"));
-                p.sendMessage(ChatColor.GRAY + " Сайдбар скорости: " + (scoreboard.isEnabled(p) ? "§aВКЛ" : "§cВЫКЛ"));
+                p.sendMessage(ChatColor.GRAY + " Ваш мувмент: " + (isMovementEnabled(p) ? "§aВКЛ" : "§cВЫКЛ"));
+                p.sendMessage(ChatColor.GRAY + " Сайдбар: " + (scoreboard.isEnabled(p) ? "§aВКЛ" : "§cВЫКЛ"));
                 p.sendMessage(ChatColor.DARK_GRAY + "" + ChatColor.STRIKETHROUGH + "----------------------------------");
-                p.sendMessage(ChatColor.YELLOW + "/hl move" + ChatColor.GRAY + " — вкл/выкл распрыжку для себя");
-                p.sendMessage(ChatColor.YELLOW + "/hl scoreboard" + ChatColor.GRAY + " — вкл/выкл сайдбар скорости");
-                p.sendMessage(ChatColor.YELLOW + "/hl reload" + ChatColor.GRAY + " — перезагрузить конфиг (админ)");
+                p.sendMessage(ChatColor.YELLOW + "/hl move" + ChatColor.GRAY + " — вкл/выкл распрыжку");
+                p.sendMessage(ChatColor.YELLOW + "/hl scoreboard" + ChatColor.GRAY + " — вкл/выкл сайдбар");
+                p.sendMessage(ChatColor.YELLOW + "/hl reload" + ChatColor.GRAY + " — перезагрузить конфиг");
                 p.sendMessage(ChatColor.DARK_GRAY + "" + ChatColor.STRIKETHROUGH + "----------------------------------");
                 return true;
             }
@@ -107,9 +104,10 @@ public class HLMovement extends JavaPlugin implements Listener {
                     p.sendMessage("§cНет прав.");
                     return true;
                 }
-                reloadConfig();
-                this.config = new MovementConfig(getConfig());
-                scoreboard.refreshConfig(config);
+                configManager.load();
+                Settings newSettings = configManager.getSettings();
+                stateManager.updateSettings(newSettings);
+                scoreboard.updateSettings(newSettings);
                 p.sendMessage("§aКонфиг HL Movement перезагружен.");
                 return true;
             }

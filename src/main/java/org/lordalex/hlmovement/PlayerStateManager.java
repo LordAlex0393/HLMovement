@@ -13,18 +13,18 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PlayerStateManager {
 
     private final HLMovement plugin;
-    private final MovementConfig config;
+    private Settings settings;
     private final Map<UUID, PlayerMoveState> states = new ConcurrentHashMap<>();
     private final Map<UUID, Location> lastLocations = new ConcurrentHashMap<>();
     private BukkitTask task;
 
-    // Прибавка скорости
-    private final double ACCEL_PER_TICK = 0.15;
-    private final double MAX_CAP = 10.0;
-
-    public PlayerStateManager(HLMovement plugin, MovementConfig config) {
+    public PlayerStateManager(HLMovement plugin, Settings settings) {
         this.plugin = plugin;
-        this.config = config;
+        this.settings = settings;
+    }
+
+    public void updateSettings(Settings newSettings) {
+        this.settings = newSettings;
     }
 
     public PlayerMoveState get(Player p) {
@@ -47,14 +47,14 @@ public class PlayerStateManager {
     }
 
     private void tick() {
-        if (!config.enabled) return;
+        if (!settings.isEnabled()) return;
 
         for (Player p : Bukkit.getOnlinePlayers()) {
             PlayerMoveState s = get(p);
             Location currentLoc = p.getLocation();
             Location lastLoc = lastLocations.get(p.getUniqueId());
 
-            // 1. Обновляем скорость для сайдбара ВСЕГДА (даже если физика выключена)
+            // Обновляем скорость для сайдбара ВСЕГДА
             if (lastLoc != null) {
                 double dx = currentLoc.getX() - lastLoc.getX();
                 double dz = currentLoc.getZ() - lastLoc.getZ();
@@ -66,7 +66,7 @@ public class PlayerStateManager {
             lastLocations.put(p.getUniqueId(), currentLoc.clone());
             s.onGround = p.isOnGround();
 
-            // 2. Физика - только если игрок не отключил её
+            // Физика (только если включена)
             if (plugin.isMovementEnabled(p) && !s.onGround) {
                 float yawDelta = s.yaw - s.lastYaw;
                 if (yawDelta > 180) yawDelta -= 360;
@@ -86,20 +86,20 @@ public class PlayerStateManager {
 
                         double turn = Math.signum(yawDelta);
 
-                        double pushX = (lookDir.getX() * 0.6) + (strafeDir.getX() * turn * 0.4);
-                        double pushZ = (lookDir.getZ() * 0.6) + (strafeDir.getZ() * turn * 0.4);
+                        double pushX = (lookDir.getX() * settings.getForwardMultiplier()) + (strafeDir.getX() * turn * settings.getStrafeMultiplier());
+                        double pushZ = (lookDir.getZ() * settings.getForwardMultiplier()) + (strafeDir.getZ() * turn * settings.getStrafeMultiplier());
 
                         double pushLen = Math.sqrt(pushX * pushX + pushZ * pushZ);
                         pushX /= pushLen;
                         pushZ /= pushLen;
 
-                        double newX = velX + (pushX * 0.15);
-                        double newZ = velZ + (pushZ * 0.15);
+                        double newX = velX + (pushX * settings.getAccelPerTick());
+                        double newZ = velZ + (pushZ * settings.getAccelPerTick());
 
                         double newSpeed = Math.sqrt(newX * newX + newZ * newZ);
-                        if (newSpeed > 10.0) {
-                            newX = (newX / newSpeed) * 10.0;
-                            newZ = (newZ / newSpeed) * 10.0;
+                        if (newSpeed > settings.getMaxCap()) {
+                            newX = (newX / newSpeed) * settings.getMaxCap();
+                            newZ = (newZ / newSpeed) * settings.getMaxCap();
                         }
 
                         p.setVelocity(new Vector(newX, velY, newZ));

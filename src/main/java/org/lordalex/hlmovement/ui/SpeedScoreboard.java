@@ -1,6 +1,5 @@
 package org.lordalex.hlmovement.ui;
 
-
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
@@ -9,9 +8,9 @@ import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Scoreboard;
 import org.lordalex.hlmovement.HLMovement;
-import org.lordalex.hlmovement.MovementConfig;
 import org.lordalex.hlmovement.PlayerMoveState;
 import org.lordalex.hlmovement.PlayerStateManager;
+import org.lordalex.hlmovement.Settings;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -21,21 +20,23 @@ public class SpeedScoreboard {
 
     private final HLMovement plugin;
     private final PlayerStateManager stateManager;
-    private MovementConfig config;
+    private Settings settings;
     private final Set<UUID> enabled = new HashSet<>();
     private BukkitTask task;
 
-    public SpeedScoreboard(HLMovement plugin, PlayerStateManager sm, MovementConfig cfg) {
+    public SpeedScoreboard(HLMovement plugin, PlayerStateManager sm, Settings settings) {
         this.plugin = plugin;
         this.stateManager = sm;
-        this.config = cfg;
+        this.settings = settings;
+    }
+
+    public void updateSettings(Settings newSettings) {
+        this.settings = newSettings;
     }
 
     public boolean isEnabled(Player p) {
         return enabled.contains(p.getUniqueId());
     }
-
-    public void refreshConfig(MovementConfig cfg) { this.config = cfg; }
 
     public void enable(Player p) {
         enabled.add(p.getUniqueId());
@@ -50,16 +51,15 @@ public class SpeedScoreboard {
     public void toggle(Player p) {
         if (enabled.contains(p.getUniqueId())) {
             disable(p);
-            p.sendMessage(ChatColor.RED + "Sidebar скорости выключен.");
+            p.sendMessage(ChatColor.RED + "Сайдбар скорости выключен.");
         } else {
             enable(p);
-            p.sendMessage(ChatColor.GREEN + "Sidebar скорости включён.");
+            p.sendMessage(ChatColor.GREEN + "Сайдбар скорости включён.");
         }
     }
 
     public void start() {
-        task = Bukkit.getScheduler().runTaskTimer(plugin, this::update,
-                config.scoreboardInterval, config.scoreboardInterval);
+        task = Bukkit.getScheduler().runTaskTimer(plugin, this::update, 2L, 2L);
     }
 
     public void stop() {
@@ -88,24 +88,14 @@ public class SpeedScoreboard {
                 p.setScoreboard(sb);
             }
 
-            // --- ОЧИЩАЕМ СТАРЫЕ СТРОКИ ---
+            // Очищаем старые строки
             for (String entry : sb.getEntries()) {
                 sb.resetScores(entry);
             }
 
-            // --- ДОБАВЛЯЕМ НОВЫЕ ---
             obj.getScore(ChatColor.YELLOW + "Скорость:").setScore(2);
-            String bar = buildBar(bps, config.maxspeed * 20.0);
-            obj.getScore(ChatColor.AQUA + String.format("%.1f", bps) + " бл/с " + bar).setScore(1);
+            obj.getScore(ChatColor.AQUA + String.format("%.1f", bps) + " бл/с").setScore(1);
             obj.getScore(ChatColor.DARK_GRAY + " ").setScore(0);
         }
-    }
-
-    private String buildBar(double cur, double max) {
-        int bars = 10;
-        int filled = (int) Math.min(bars, Math.round(cur / max * bars));
-        StringBuilder sb = new StringBuilder("[");
-        for (int i = 0; i < bars; i++) sb.append(i < filled ? '|' : '.');
-        return sb.append(']').toString();
     }
 }
