@@ -31,6 +31,10 @@ public class SpeedScoreboard {
         this.config = cfg;
     }
 
+    public boolean isEnabled(Player p) {
+        return enabled.contains(p.getUniqueId());
+    }
+
     public void refreshConfig(MovementConfig cfg) { this.config = cfg; }
 
     public void enable(Player p) {

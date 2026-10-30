@@ -5,13 +5,12 @@ author: Lord_Alex
 api-version: 1.8
 depend: [ProtocolLib]
 commands:
-  hlspeed:
-    description: Вкл/выкл sidebar со скоростью
-    usage: /hlspeed
-  hlreload:
-    description: Перезагрузить конфиг
-    usage: /hlreload
-    permission: hlmovement.reload
+  hl:
+    description: Управление плагином HL Movement
+    usage: /hl
+    permission: hlmovement.use
 permissions:
+  hlmovement.use:
+    default: true
   hlmovement.reload:
     default: op

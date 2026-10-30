@@ -54,7 +54,7 @@ public class PlayerStateManager {
             Location currentLoc = p.getLocation();
             Location lastLoc = lastLocations.get(p.getUniqueId());
 
-            // Скорость для сайдбара
+            // 1. Обновляем скорость для сайдбара ВСЕГДА (даже если физика выключена)
             if (lastLoc != null) {
                 double dx = currentLoc.getX() - lastLoc.getX();
                 double dz = currentLoc.getZ() - lastLoc.getZ();
@@ -64,10 +64,10 @@ public class PlayerStateManager {
                 }
             }
             lastLocations.put(p.getUniqueId(), currentLoc.clone());
-
             s.onGround = p.isOnGround();
 
-            if (!s.onGround) {
+            // 2. Физика - только если игрок не отключил её
+            if (plugin.isMovementEnabled(p) && !s.onGround) {
                 float yawDelta = s.yaw - s.lastYaw;
                 if (yawDelta > 180) yawDelta -= 360;
                 if (yawDelta < -180) yawDelta += 360;
@@ -81,36 +81,25 @@ public class PlayerStateManager {
                     double currentSpeed = Math.sqrt(velX * velX + velZ * velZ);
 
                     if (currentSpeed > 0.05) {
-                        // Направление, куда мы летим прямо сейчас
-                        Vector currentDir = new Vector(velX / currentSpeed, 0, velZ / currentSpeed);
-
-                        // Направление взгляда
                         Vector lookDir = p.getLocation().getDirection().setY(0).normalize();
-
-                        // Боковой вектор
                         Vector strafeDir = new Vector(-lookDir.getZ(), 0, lookDir.getX());
 
                         double turn = Math.signum(yawDelta);
 
-                        // --- НОВЫЙ ВЕКТОР: 70% ВПЕРЁД + 30% ВБОК ---
-                        // Мы берем направление взгляда (вперед) и добавляем немного вбок
-                        double pushX = (lookDir.getX() * 0.67) + (strafeDir.getX() * turn * 0.33);
-                        double pushZ = (lookDir.getZ() * 0.67) + (strafeDir.getZ() * turn * 0.33);
+                        double pushX = (lookDir.getX() * 0.6) + (strafeDir.getX() * turn * 0.4);
+                        double pushZ = (lookDir.getZ() * 0.6) + (strafeDir.getZ() * turn * 0.4);
 
-                        // Нормализуем, чтобы длина была 1
                         double pushLen = Math.sqrt(pushX * pushX + pushZ * pushZ);
                         pushX /= pushLen;
                         pushZ /= pushLen;
 
-                        // Добавляем скорость
-                        double newX = velX + (pushX * ACCEL_PER_TICK);
-                        double newZ = velZ + (pushZ * ACCEL_PER_TICK);
+                        double newX = velX + (pushX * 0.15);
+                        double newZ = velZ + (pushZ * 0.15);
 
-                        // Потолок
                         double newSpeed = Math.sqrt(newX * newX + newZ * newZ);
-                        if (newSpeed > MAX_CAP) {
-                            newX = (newX / newSpeed) * MAX_CAP;
-                            newZ = (newZ / newSpeed) * MAX_CAP;
+                        if (newSpeed > 10.0) {
+                            newX = (newX / newSpeed) * 10.0;
+                            newZ = (newZ / newSpeed) * 10.0;
                         }
 
                         p.setVelocity(new Vector(newX, velY, newZ));
