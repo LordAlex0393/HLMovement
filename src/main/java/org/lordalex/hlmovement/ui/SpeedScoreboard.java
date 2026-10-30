@@ -44,6 +44,9 @@ public class SpeedScoreboard {
 
     public void disable(Player p) {
         enabled.remove(p.getUniqueId());
+        // Сбрасываем уровень и опыт, если сайдбар выключают
+        p.setLevel(0);
+        p.setExp(0);
         Scoreboard sb = Bukkit.getScoreboardManager().getNewScoreboard();
         p.setScoreboard(sb);
     }
@@ -79,6 +82,17 @@ public class SpeedScoreboard {
             PlayerMoveState s = stateManager.get(p);
             double bps = s.getSpeedBlocksPerSecond();
 
+            // --- XP BAR (УРОВЕНЬ) ---
+            // Уровень = количество блоков в секунду (округленное)
+            p.setLevel((int) Math.round(bps));
+
+            // Полоска опыта = заполнение шкалы скорости
+            // Максимальное значение для шкалы берем из конфига
+            double maxBar = settings.getSpeedMaxForBar();
+            float expProgress = (float) Math.min(1.0, bps / maxBar);
+            p.setExp(expProgress);
+            // -------------------------
+
             Scoreboard sb = p.getScoreboard();
             Objective obj = sb.getObjective("hl_speed");
             if (obj == null) {
@@ -94,11 +108,10 @@ public class SpeedScoreboard {
                 sb.resetScores(entry);
             }
 
-            // Формируем шкалу и строку (в одной строке)
+            // Формируем шкалу и строку
             String bar = buildBar(bps, settings.getSpeedMaxForBar());
             String speedStr = String.format("%.1f", bps);
 
-            // Защита от 40 символов
             String line = ColorUtil.get("&b" + speedStr + " &eбл/с " + bar);
             if (line.length() > 40) {
                 line = line.substring(0, 40);

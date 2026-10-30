@@ -34,6 +34,10 @@ public class PlayerStateManager {
     public void remove(Player p) {
         states.remove(p.getUniqueId());
         lastLocations.remove(p.getUniqueId());
+
+        // Сброс уровня опыта при выходе
+        p.setLevel(0);
+        p.setExp(0);
     }
 
     public void start() {
