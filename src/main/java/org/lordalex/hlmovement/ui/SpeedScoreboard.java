@@ -7,6 +7,7 @@ import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
 import org.bukkit.scoreboard.Scoreboard;
 import org.lordalex.hlmovement.HLMovement;
+import org.lordalex.hlmovement.PlayerMoveState;
 import org.lordalex.hlmovement.PlayerStateManager;
 import org.lordalex.hlmovement.Settings;
 import org.lordalex.hlmovement.utils.ColorUtil;
@@ -22,8 +23,6 @@ public class SpeedScoreboard {
     private Settings settings;
     private final Set<UUID> enabled = new HashSet<>();
     private BukkitTask task;
-
-    private final double MAX_BAR_SPEED = 100.0;
 
     public SpeedScoreboard(HLMovement plugin, PlayerStateManager sm, Settings settings) {
         this.plugin = plugin;
@@ -60,7 +59,8 @@ public class SpeedScoreboard {
     }
 
     public void start() {
-        task = Bukkit.getScheduler().runTaskTimer(plugin, this::update, 10L, 10L);
+        int ticks = Math.max(1, settings.getScoreboardUpdateTicks());
+        task = Bukkit.getScheduler().runTaskTimer(plugin, this::update, ticks, ticks);
     }
 
     public void stop() {
@@ -76,7 +76,8 @@ public class SpeedScoreboard {
         for (Player p : Bukkit.getOnlinePlayers()) {
             if (!enabled.contains(p.getUniqueId())) continue;
 
-            double bps = p.getVelocity().length() * 20.0;
+            PlayerMoveState s = stateManager.get(p);
+            double bps = s.getSpeedBlocksPerSecond();
 
             Scoreboard sb = p.getScoreboard();
             Objective obj = sb.getObjective("hl_speed");
@@ -93,28 +94,24 @@ public class SpeedScoreboard {
                 sb.resetScores(entry);
             }
 
-            // Формируем шкалу и строку
-            String bar = buildBar(bps, MAX_BAR_SPEED);
+            // Формируем шкалу и строку (в одной строке)
+            String bar = buildBar(bps, settings.getSpeedMaxForBar());
             String speedStr = String.format("%.1f", bps);
 
-            // Выводим скорость и шкалу одной строкой
-            String line = ColorUtil.get("&b" + speedStr + " &eбл/с &7" + bar);
-
-            // Защита от 40 символов (включая цвета)
+            // Защита от 40 символов
+            String line = ColorUtil.get("&b" + speedStr + " &eбл/с " + bar);
             if (line.length() > 40) {
                 line = line.substring(0, 40);
             }
 
-
-            obj.getScore(ColorUtil.get("&eСкорость:")).setScore(3);
-            obj.getScore(ColorUtil.get("&8  ")).setScore(2);
+            obj.getScore(ColorUtil.get("&eСкорость:")).setScore(2);
             obj.getScore(line).setScore(1);
             obj.getScore(ColorUtil.get("&8 ")).setScore(0);
         }
     }
 
     private String buildBar(double cur, double max) {
-        int bars = 10;
+        int bars = settings.getSpeedBarsCount();
         int filled = (int) Math.min(bars, Math.round((cur / max) * bars));
 
         StringBuilder sb = new StringBuilder("&7[");

@@ -27,6 +27,15 @@ public class Settings {
     @JsonProperty("max_cap")
     private double maxCap = 10.0; // Максимальный потолок (защита от краша)
 
+    @JsonProperty("scoreboard_update_ticks")
+    private int scoreboardUpdateTicks = 4; // Как часто обновлять (в тиках)
+
+    @JsonProperty("speed_max_for_bar")
+    private double speedMaxForBar = 100.0; // Максимальная скорость для шкалы
+
+    @JsonProperty("speed_bars_count")
+    private int speedBarsCount = 15; // Количество делений в шкале
+
     // --- Геттеры (чтобы код мог читать настройки) ---
     public boolean isEnabled() { return enabled; }
     public boolean isAutoBhop() { return autoBhop; }
@@ -35,4 +44,7 @@ public class Settings {
     public double getForwardMultiplier() { return forwardMultiplier; }
     public double getStrafeMultiplier() { return strafeMultiplier; }
     public double getMaxCap() { return maxCap; }
+    public int getScoreboardUpdateTicks() { return scoreboardUpdateTicks; }
+    public double getSpeedMaxForBar() { return speedMaxForBar; }
+    public int getSpeedBarsCount() { return speedBarsCount; }
 }

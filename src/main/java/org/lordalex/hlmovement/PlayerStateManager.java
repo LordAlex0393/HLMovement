@@ -54,7 +54,7 @@ public class PlayerStateManager {
             Location currentLoc = p.getLocation();
             Location lastLoc = lastLocations.get(p.getUniqueId());
 
-            // Обновляем скорость для сайдбара ВСЕГДА
+            // 1. Обновляем скорость для сайдбара (как было)
             if (lastLoc != null) {
                 double dx = currentLoc.getX() - lastLoc.getX();
                 double dz = currentLoc.getZ() - lastLoc.getZ();
@@ -66,7 +66,7 @@ public class PlayerStateManager {
             lastLocations.put(p.getUniqueId(), currentLoc.clone());
             s.onGround = p.isOnGround();
 
-            // Физика (только если включена)
+            // 2. Физика (только если включена)
             if (plugin.isMovementEnabled(p) && !s.onGround) {
                 float yawDelta = s.yaw - s.lastYaw;
                 if (yawDelta > 180) yawDelta -= 360;
@@ -86,6 +86,7 @@ public class PlayerStateManager {
 
                         double turn = Math.signum(yawDelta);
 
+                        // Берем из конфига настройки направлений (в твоем коде было 0.6 и 0.4)
                         double pushX = (lookDir.getX() * settings.getForwardMultiplier()) + (strafeDir.getX() * turn * settings.getStrafeMultiplier());
                         double pushZ = (lookDir.getZ() * settings.getForwardMultiplier()) + (strafeDir.getZ() * turn * settings.getStrafeMultiplier());
 
@@ -93,6 +94,7 @@ public class PlayerStateManager {
                         pushX /= pushLen;
                         pushZ /= pushLen;
 
+                        // Берем из конфига силу разгона и лимит
                         double newX = velX + (pushX * settings.getAccelPerTick());
                         double newZ = velZ + (pushZ * settings.getAccelPerTick());
 

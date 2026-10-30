@@ -11,6 +11,7 @@ public class PlayerMoveState {
     public boolean wasOnGround; // <--- ДОБАВЬ ЭТУ СТРОКУ
     public boolean justJumped;
     public double wishX, wishZ;
+    public double speedBps;
 
     public double getSpeedBpt() {
         return Math.sqrt(vx * vx + vz * vz);
