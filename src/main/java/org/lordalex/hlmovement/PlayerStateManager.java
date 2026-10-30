@@ -35,7 +35,7 @@ public class PlayerStateManager {
         states.remove(p.getUniqueId());
         lastLocations.remove(p.getUniqueId());
 
-        // Сброс уровня опыта при выходе
+        // Сброс уровня опыта при выходе (чтобы не залипло)
         p.setLevel(0);
         p.setExp(0);
     }
@@ -58,7 +58,7 @@ public class PlayerStateManager {
             Location currentLoc = p.getLocation();
             Location lastLoc = lastLocations.get(p.getUniqueId());
 
-            // 1. Обновляем скорость для сайдбара (как было)
+            // 1. Считаем сглаженную скорость для физики
             if (lastLoc != null) {
                 double dx = currentLoc.getX() - lastLoc.getX();
                 double dz = currentLoc.getZ() - lastLoc.getZ();
@@ -70,45 +70,63 @@ public class PlayerStateManager {
             lastLocations.put(p.getUniqueId(), currentLoc.clone());
             s.onGround = p.isOnGround();
 
-            // 2. Физика (только если включена)
+            // 2. ФИЗИКА РАЗГОНА (HL1 + Стрейф)
             if (plugin.isMovementEnabled(p) && !s.onGround) {
-                float yawDelta = s.yaw - s.lastYaw;
-                if (yawDelta > 180) yawDelta -= 360;
-                if (yawDelta < -180) yawDelta += 360;
+                double currentSpeed = Math.sqrt(s.vx * s.vx + s.vz * s.vz);
 
-                if (Math.abs(yawDelta) > 0.05f) {
-                    Vector currentVel = p.getVelocity();
-                    double velX = currentVel.getX();
-                    double velZ = currentVel.getZ();
-                    double velY = currentVel.getY();
+                if (currentSpeed > 0.01) {
+                    // Направление текущего полета
+                    double dirX = s.vx / currentSpeed;
+                    double dirZ = s.vz / currentSpeed;
 
-                    double currentSpeed = Math.sqrt(velX * velX + velZ * velZ);
+                    // Направление взгляда
+                    Vector lookDir = p.getLocation().getDirection().setY(0).normalize();
 
-                    if (currentSpeed > 0.05) {
-                        Vector lookDir = p.getLocation().getDirection().setY(0).normalize();
-                        Vector strafeDir = new Vector(-lookDir.getZ(), 0, lookDir.getX());
+                    // Вектор стрейфа (вправо от взгляда)
+                    Vector strafeDir = new Vector(-lookDir.getZ(), 0, lookDir.getX());
 
+                    // Вычисляем, нажимает ли игрок A/D (смотрит вбок)
+                    double strafeDot = (dirX * strafeDir.getX()) + (dirZ * strafeDir.getZ());
+                    boolean isStrafing = Math.abs(strafeDot) > 0.3;
+
+                    float yawDelta = s.yaw - s.lastYaw;
+                    if (yawDelta > 180) yawDelta -= 360;
+                    if (yawDelta < -180) yawDelta += 360;
+
+                    if (Math.abs(yawDelta) > 0.05f) {
                         double turn = Math.signum(yawDelta);
+                        double turnDot = turn * strafeDot;
 
-                        // Берем из конфига настройки направлений (в твоем коде было 0.6 и 0.4)
-                        double pushX = (lookDir.getX() * settings.getForwardMultiplier()) + (strafeDir.getX() * turn * settings.getStrafeMultiplier());
-                        double pushZ = (lookDir.getZ() * settings.getForwardMultiplier()) + (strafeDir.getZ() * turn * settings.getStrafeMultiplier());
+                        // Множитель буста
+                        double mult = 1.0;
+                        if (isStrafing && turnDot > 0.3) {
+                            mult = 2.0; // Идеальный стрейф (A/D + мышь в ту же сторону)
+                        } else if (!isStrafing) {
+                            mult = 0.3; // Просто крутим мышкой
+                        }
 
-                        double pushLen = Math.sqrt(pushX * pushX + pushZ * pushZ);
-                        pushX /= pushLen;
-                        pushZ /= pushLen;
+                        // Применяем ускорение
+                        double accel = settings.getAccelPerTick() * mult;
 
-                        // Берем из конфига силу разгона и лимит
-                        double newX = velX + (pushX * settings.getAccelPerTick());
-                        double newZ = velZ + (pushZ * settings.getAccelPerTick());
+                        Vector pushDir = new Vector(
+                                (lookDir.getX() * settings.getForwardMultiplier()) + (strafeDir.getX() * turn * settings.getStrafeMultiplier()),
+                                0,
+                                (lookDir.getZ() * settings.getForwardMultiplier()) + (strafeDir.getZ() * turn * settings.getStrafeMultiplier())
+                        ).normalize();
 
+                        Vector currentVel = p.getVelocity();
+                        double newX = currentVel.getX() + pushDir.getX() * accel;
+                        double newZ = currentVel.getZ() + pushDir.getZ() * accel;
+                        double newY = currentVel.getY();
+
+                        // Ограничение скорости
                         double newSpeed = Math.sqrt(newX * newX + newZ * newZ);
                         if (newSpeed > settings.getMaxCap()) {
                             newX = (newX / newSpeed) * settings.getMaxCap();
                             newZ = (newZ / newSpeed) * settings.getMaxCap();
                         }
 
-                        p.setVelocity(new Vector(newX, velY, newZ));
+                        p.setVelocity(new Vector(newX, newY, newZ));
                     }
                 }
             }
