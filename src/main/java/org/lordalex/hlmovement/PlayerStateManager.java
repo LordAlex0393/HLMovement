@@ -56,32 +56,26 @@ public class PlayerStateManager {
             Location currentLoc = p.getLocation();
             Location lastLoc = lastLocations.get(p.getUniqueId());
 
+            // 1. Обновляем скорость для сайдбара
             if (lastLoc != null) {
                 double dx = currentLoc.getX() - lastLoc.getX();
                 double dz = currentLoc.getZ() - lastLoc.getZ();
-
-                // 1. Считаем локальные координаты (вперёд / вбок)
-                double yawRad = Math.toRadians(currentLoc.getYaw());
-                double sin = Math.sin(yawRad);
-                double cos = Math.cos(yawRad);
-
-                // localForward - движение вперед/назад, localStrafe - движение вбок
-                double localForward = sin * dx + cos * dz;
-                double localStrafe = -cos * dx + sin * dz;
-
-                // Обновляем сглаженную скорость для физики
                 if (Math.abs(dx) < 2.0 && Math.abs(dz) < 2.0) {
                     s.vx = s.vx * 0.8 + dx * 0.2;
                     s.vz = s.vz * 0.8 + dz * 0.2;
                 }
+            }
+            lastLocations.put(p.getUniqueId(), currentLoc.clone());
+            s.onGround = p.isOnGround();
 
-                // 2. ТЕСТ: Смотрим только на боковое смещение (A/D)
-                // Если игрок сдвинулся вбок больше чем на 0.05 блока за тик
-                boolean isStrafing = Math.abs(localStrafe) > 0.05;
-                double strafeDir = Math.signum(localStrafe); // 1 = D (вправо), -1 = A (влево)
+            // 2. Физика
+            if (plugin.isMovementEnabled(p) && !s.onGround) {
+                float yawDelta = s.yaw - s.lastYaw;
+                if (yawDelta > 180) yawDelta -= 360;
+                if (yawDelta < -180) yawDelta += 360;
 
-                // 3. Физика
-                if (plugin.isMovementEnabled(p) && !s.onGround && isStrafing) {
+                // Если игрок крутит мышку
+                if (Math.abs(yawDelta) > 0.05f) {
                     Vector currentVel = p.getVelocity();
                     double velX = currentVel.getX();
                     double velZ = currentVel.getZ();
@@ -90,23 +84,25 @@ public class PlayerStateManager {
                     double currentSpeed = Math.sqrt(velX * velX + velZ * velZ);
 
                     if (currentSpeed > 0.05) {
-                        // Направление взгляда
                         Vector lookDir = p.getLocation().getDirection().setY(0).normalize();
+                        Vector strafeDir = new Vector(-lookDir.getZ(), 0, lookDir.getX());
 
-                        // Направление стрейфа (вбок от взгляда)
-                        Vector strafeDirVec = new Vector(-lookDir.getZ(), 0, lookDir.getX());
+                        double turn = Math.signum(yawDelta);
 
-                        // Буст дается В НАПРАВЛЕНИИ ВЗГЛЯДА (вперед),
-                        // НО только если игрок реально нажимает A/D (isStrafing = true).
-                        // Чем сильнее нажата клавиша (больше localStrafe), тем больше буст.
+                        // Берем параметры из конфига
+                        double pushX = (lookDir.getX() * settings.getForwardMultiplier()) + (strafeDir.getX() * turn * settings.getStrafeMultiplier());
+                        double pushZ = (lookDir.getZ() * settings.getForwardMultiplier()) + (strafeDir.getZ() * turn * settings.getStrafeMultiplier());
 
-                        double accel = settings.getAccelPerTick() * Math.min(1.0, Math.abs(localStrafe) * 20.0);
+                        double pushLen = Math.sqrt(pushX * pushX + pushZ * pushZ);
+                        pushX /= pushLen;
+                        pushZ /= pushLen;
 
-                        // Добавляем скорость вбок и немного вперед
-                        double newX = velX + (strafeDirVec.getX() * strafeDir * accel * 0.5) + (lookDir.getX() * accel);
-                        double newZ = velZ + (strafeDirVec.getZ() * strafeDir * accel * 0.5) + (lookDir.getZ() * accel);
+                        // Берем силу разгона из конфига
+                        double accel = settings.getAccelPerTick();
+                        double newX = velX + (pushX * accel);
+                        double newZ = velZ + (pushZ * accel);
 
-                        // Убираем потолок скорости (ставим технический 1000)
+                        // Защита от бесконечности (вместо MAX_CAP)
                         double newSpeed = Math.sqrt(newX * newX + newZ * newZ);
                         if (newSpeed > 1000.0) {
                             newX = (newX / newSpeed) * 1000.0;
@@ -117,8 +113,8 @@ public class PlayerStateManager {
                     }
                 }
             }
-            lastLocations.put(p.getUniqueId(), currentLoc.clone());
-            s.onGround = p.isOnGround();
+
+            s.lastYaw = s.yaw;
         }
     }
 }
