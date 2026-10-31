@@ -56,7 +56,7 @@ public class PlayerStateManager {
             Location currentLoc = p.getLocation();
             Location lastLoc = lastLocations.get(p.getUniqueId());
 
-            // Обновляем сглаженную скорость
+            // 1. Обновляем сглаженную скорость
             if (lastLoc != null) {
                 double dx = currentLoc.getX() - lastLoc.getX();
                 double dz = currentLoc.getZ() - lastLoc.getZ();
@@ -68,7 +68,7 @@ public class PlayerStateManager {
             lastLocations.put(p.getUniqueId(), currentLoc.clone());
             s.onGround = p.isOnGround();
 
-            // ФИЗИКА
+            // 2. ФИЗИКА (только в воздухе и если включено)
             if (plugin.isMovementEnabled(p) && !s.onGround) {
                 Vector currentVel = p.getVelocity();
                 double velX = currentVel.getX();
@@ -76,51 +76,97 @@ public class PlayerStateManager {
                 double velY = currentVel.getY();
                 double currentSpeed = Math.sqrt(velX * velX + velZ * velZ);
 
-                if (currentSpeed > 0.1) {
-                    // 1. Куда мы летим (вектор скорости)
+                // Если мы летим с какой-то скоростью
+                if (currentSpeed > 0.05) {
+                    // Направление текущего полета
                     Vector velDir = new Vector(velX / currentSpeed, 0, velZ / currentSpeed);
 
-                    // 2. Куда смотрит игрок
+                    // Направление взгляда (куда смотрим)
                     Vector lookDir = p.getLocation().getDirection().setY(0).normalize();
 
-                    // 3. Угол между полетом и взглядом
-                    double dot = velDir.dot(lookDir);
-                    // dot = 1.0 (летим прямо), 0.0 (летим вбок), -1.0 (летим назад)
-                    double angleDeg = Math.toDegrees(Math.acos(Math.max(-1.0, Math.min(1.0, dot))));
+                    // Боковой вектор (вправо от взгляда)
+                    Vector rightDir = new Vector(-lookDir.getZ(), 0, lookDir.getX());
 
-                    // Если угол меньше 45 градусов (смотрим примерно туда, куда летим)
-                    if (angleDeg < 30.0) {
-                        // Смотрим, нажимает ли он A или D (по смещению мыши)
-                        float yawDelta = s.yaw - s.lastYaw;
-                        if (yawDelta > 180) yawDelta -= 360;
-                        if (yawDelta < -180) yawDelta += 360;
+                    // Смотрим, насколько мышь ушла от направления полета
+                    float yawDelta = s.yaw - s.lastYaw;
+                    if (yawDelta > 180) yawDelta -= 360;
+                    if (yawDelta < -180) yawDelta += 360;
 
-                        // Если мышь крутится плавно (не резко)
-                        if (Math.abs(yawDelta) > 0.05f && Math.abs(yawDelta) < 10.0f) {
-                            // Считаем силу стрейфа: чем ближе угол к 45°, тем сильнее буст
-                            // (но не больше 1.0)
-                            double strafePower = Math.sin(Math.toRadians(angleDeg));
+                    // Если игрок крутит мышку
+                    if (Math.abs(yawDelta) > 0.05f) {
+                        // Определяем, в какую сторону крутится мышь (1 = вправо, -1 = влево)
+                        double turnDir = Math.signum(yawDelta);
 
-                            // Множитель: даем буст только если смотрим вперёд-вбок
-                            double accel = settings.getAccelPerTick() * strafePower;
+                        // Определяем, нажимает ли он A или D
+                        // Смотрим на угол между полетом и взглядом.
+                        // Если мы летим вправо, а смотрим влево - это ошибка.
+                        double dot = velDir.dot(lookDir);
 
-                            // Добавляем скорость В НАПРАВЛЕНИИ ВЗГЛЯДА (а не вбок!)
-                            // Но мы хотим, чтобы он летел вперёд, поэтому добавляем чуть-чуть
-                            // к текущему вектору полета.
-                            Vector pushDir = velDir.clone().add(lookDir).normalize();
+                        // Вычисляем угол в градусах
+                        double angleDeg = Math.toDegrees(Math.acos(Math.max(-1.0, Math.min(1.0, dot))));
 
-                            double newX = velX + (pushDir.getX() * accel);
-                            double newZ = velZ + (pushDir.getZ() * accel);
+                        // Если угол слишком большой (смотрим больше чем на 90 градусов вбок) - это не стрейф
+                        if (angleDeg < 90.0) {
+                            // --- ЛОГИКА БАЛАНСА ---
+                            // Если мы смотрим вправо (angle > 0) и нажимаем D (turnDir > 0), то это ПРАВИЛЬНО.
+                            // Если мы смотрим вправо, но нажимаем A (turnDir < 0), то это НЕПРАВИЛЬНО (штраф).
 
-                            // Ограничение скорости
-                            double newSpeed = Math.sqrt(newX * newX + newZ * newZ);
-                            if (newSpeed > settings.getMaxCap()) {
-                                newX = (newX / newSpeed) * settings.getMaxCap();
-                                newZ = (newZ / newSpeed) * settings.getMaxCap();
+                            // Определяем, куда мы смотрим относительно полета (вправо или влево)
+                            // Используем скалярное произведение с rightDir
+                            double lookSide = lookDir.dot(rightDir);
+
+                            // Если lookSide > 0, мы смотрим вправо. Если < 0, влево.
+                            double inputSide = turnDir; // 1 = вправо (D), -1 = влево (A)
+
+                            // Смотрим, совпадают ли направления
+                            double directionMatch = lookSide * inputSide;
+                            // 1.0 = идеально (смотрим вправо и нажимаем D)
+                            // -1.0 = ошибка (смотрим вправо, но нажимаем A)
+
+                            // --- ПРИМЕНЯЕМ БУСТ ИЛИ ШТРАФ ---
+                            double accel = 0;
+
+                            if (directionMatch > 0.3) {
+                                // ПРАВИЛЬНЫЙ СТРЕЙФ: даем буст
+                                // Чем больше угол (до 45 градусов), тем сильнее буст
+                                double angleFactor = Math.min(1.0, angleDeg / 45.0);
+                                accel = settings.getAccelPerTick() * angleFactor;
+
+                                // Применяем буст в направлении ВЗГЛЯДА (вперёд-вбок)
+                                // Но мы хотим, чтобы он летел вперёд, поэтому смешиваем с текущим полетом
+                                Vector pushDir = new Vector(
+                                        (lookDir.getX() * settings.getForwardMultiplier()) + (rightDir.getX() * directionMatch * settings.getStrafeMultiplier()),
+                                        0,
+                                        (lookDir.getZ() * settings.getForwardMultiplier()) + (rightDir.getZ() * directionMatch * settings.getStrafeMultiplier())
+                                ).normalize();
+
+                                velX += pushDir.getX() * accel;
+                                velZ += pushDir.getZ() * accel;
+
+                            } else if (directionMatch < -0.3) {
+                                // НЕПРАВИЛЬНЫЙ СТРЕЙФ: штраф (гасим скорость)
+                                accel = settings.getAccelPerTick() * 0.5; // Сила штрафа
+                                velX *= (1.0 - accel);
+                                velZ *= (1.0 - accel);
+                            } else {
+                                // Нейтрально (просто крутим мышкой) - минимальный буст
+                                accel = settings.getAccelPerTick() * 0.1;
+                                velX += lookDir.getX() * accel;
+                                velZ += lookDir.getZ() * accel;
                             }
 
-                            p.setVelocity(new Vector(newX, velY, newZ));
+                            // Ограничение скорости
+                            double newSpeed = Math.sqrt(velX * velX + velZ * velZ);
+                            if (newSpeed > settings.getMaxCap()) {
+                                velX = (velX / newSpeed) * settings.getMaxCap();
+                                velZ = (velZ / newSpeed) * settings.getMaxCap();
+                            }
+
+                            p.setVelocity(new Vector(velX, velY, velZ));
                         }
+                    } else {
+                        // Если мышка не крутится - никакого буста
+                        // Но скорость не сбрасываем (она есть по инерции)
                     }
                 }
             }
