@@ -34,8 +34,6 @@ public class PlayerStateManager {
     public void remove(Player p) {
         states.remove(p.getUniqueId());
         lastLocations.remove(p.getUniqueId());
-
-        // Сброс уровня опыта при выходе (чтобы не залипло)
         p.setLevel(0);
         p.setExp(0);
     }
@@ -58,7 +56,7 @@ public class PlayerStateManager {
             Location currentLoc = p.getLocation();
             Location lastLoc = lastLocations.get(p.getUniqueId());
 
-            // 1. Считаем сглаженную скорость для физики
+            // Обновляем сглаженную скорость
             if (lastLoc != null) {
                 double dx = currentLoc.getX() - lastLoc.getX();
                 double dz = currentLoc.getZ() - lastLoc.getZ();
@@ -70,63 +68,59 @@ public class PlayerStateManager {
             lastLocations.put(p.getUniqueId(), currentLoc.clone());
             s.onGround = p.isOnGround();
 
-            // 2. ФИЗИКА РАЗГОНА (HL1 + Стрейф)
+            // ФИЗИКА
             if (plugin.isMovementEnabled(p) && !s.onGround) {
-                double currentSpeed = Math.sqrt(s.vx * s.vx + s.vz * s.vz);
+                Vector currentVel = p.getVelocity();
+                double velX = currentVel.getX();
+                double velZ = currentVel.getZ();
+                double velY = currentVel.getY();
+                double currentSpeed = Math.sqrt(velX * velX + velZ * velZ);
 
-                if (currentSpeed > 0.01) {
-                    // Направление текущего полета
-                    double dirX = s.vx / currentSpeed;
-                    double dirZ = s.vz / currentSpeed;
+                if (currentSpeed > 0.1) {
+                    // 1. Куда мы летим (вектор скорости)
+                    Vector velDir = new Vector(velX / currentSpeed, 0, velZ / currentSpeed);
 
-                    // Направление взгляда
+                    // 2. Куда смотрит игрок
                     Vector lookDir = p.getLocation().getDirection().setY(0).normalize();
 
-                    // Вектор стрейфа (вправо от взгляда)
-                    Vector strafeDir = new Vector(-lookDir.getZ(), 0, lookDir.getX());
+                    // 3. Угол между полетом и взглядом
+                    double dot = velDir.dot(lookDir);
+                    // dot = 1.0 (летим прямо), 0.0 (летим вбок), -1.0 (летим назад)
+                    double angleDeg = Math.toDegrees(Math.acos(Math.max(-1.0, Math.min(1.0, dot))));
 
-                    // Вычисляем, нажимает ли игрок A/D (смотрит вбок)
-                    double strafeDot = (dirX * strafeDir.getX()) + (dirZ * strafeDir.getZ());
-                    boolean isStrafing = Math.abs(strafeDot) > 0.3;
+                    // Если угол меньше 45 градусов (смотрим примерно туда, куда летим)
+                    if (angleDeg < 30.0) {
+                        // Смотрим, нажимает ли он A или D (по смещению мыши)
+                        float yawDelta = s.yaw - s.lastYaw;
+                        if (yawDelta > 180) yawDelta -= 360;
+                        if (yawDelta < -180) yawDelta += 360;
 
-                    float yawDelta = s.yaw - s.lastYaw;
-                    if (yawDelta > 180) yawDelta -= 360;
-                    if (yawDelta < -180) yawDelta += 360;
+                        // Если мышь крутится плавно (не резко)
+                        if (Math.abs(yawDelta) > 0.05f && Math.abs(yawDelta) < 10.0f) {
+                            // Считаем силу стрейфа: чем ближе угол к 45°, тем сильнее буст
+                            // (но не больше 1.0)
+                            double strafePower = Math.sin(Math.toRadians(angleDeg));
 
-                    if (Math.abs(yawDelta) > 0.05f) {
-                        double turn = Math.signum(yawDelta);
-                        double turnDot = turn * strafeDot;
+                            // Множитель: даем буст только если смотрим вперёд-вбок
+                            double accel = settings.getAccelPerTick() * strafePower;
 
-                        // Множитель буста
-                        double mult = 1.0;
-                        if (isStrafing && turnDot > 0.3) {
-                            mult = 8.0; // Идеальный стрейф (A/D + мышь в ту же сторону)
-                        } else if (!isStrafing) {
-                            mult = 0.3; // Просто крутим мышкой
+                            // Добавляем скорость В НАПРАВЛЕНИИ ВЗГЛЯДА (а не вбок!)
+                            // Но мы хотим, чтобы он летел вперёд, поэтому добавляем чуть-чуть
+                            // к текущему вектору полета.
+                            Vector pushDir = velDir.clone().add(lookDir).normalize();
+
+                            double newX = velX + (pushDir.getX() * accel);
+                            double newZ = velZ + (pushDir.getZ() * accel);
+
+                            // Ограничение скорости
+                            double newSpeed = Math.sqrt(newX * newX + newZ * newZ);
+                            if (newSpeed > settings.getMaxCap()) {
+                                newX = (newX / newSpeed) * settings.getMaxCap();
+                                newZ = (newZ / newSpeed) * settings.getMaxCap();
+                            }
+
+                            p.setVelocity(new Vector(newX, velY, newZ));
                         }
-
-                        // Применяем ускорение
-                        double accel = settings.getAccelPerTick() * mult;
-
-                        Vector pushDir = new Vector(
-                                (lookDir.getX() * settings.getForwardMultiplier()) + (strafeDir.getX() * turn * settings.getStrafeMultiplier()),
-                                0,
-                                (lookDir.getZ() * settings.getForwardMultiplier()) + (strafeDir.getZ() * turn * settings.getStrafeMultiplier())
-                        ).normalize();
-
-                        Vector currentVel = p.getVelocity();
-                        double newX = currentVel.getX() + pushDir.getX() * accel;
-                        double newZ = currentVel.getZ() + pushDir.getZ() * accel;
-                        double newY = currentVel.getY();
-
-                        // Ограничение скорости
-                        double newSpeed = Math.sqrt(newX * newX + newZ * newZ);
-                        if (newSpeed > settings.getMaxCap()) {
-                            newX = (newX / newSpeed) * settings.getMaxCap();
-                            newZ = (newZ / newSpeed) * settings.getMaxCap();
-                        }
-
-                        p.setVelocity(new Vector(newX, newY, newZ));
                     }
                 }
             }
