@@ -100,7 +100,7 @@ public class PlayerStateManager {
                         // Множитель буста
                         double mult = 1.0;
                         if (isStrafing && turnDot > 0.3) {
-                            mult = 2.0; // Идеальный стрейф (A/D + мышь в ту же сторону)
+                            mult = 8.0; // Идеальный стрейф (A/D + мышь в ту же сторону)
                         } else if (!isStrafing) {
                             mult = 0.3; // Просто крутим мышкой
                         }
